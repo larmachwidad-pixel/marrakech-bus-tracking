@@ -11,6 +11,19 @@ const busColors = {
   'Ligne 1': '#667eea',
   'Ligne 12': '#764ba2',
   'Ligne 6': '#f44336',
+  'Ligne 18': '#27ae60',
+  'Ligne 19': '#f39c12',
+  'Ligne 11': '#00bcd4',
+};
+
+// Line visibility toggle state
+const lineVisibility = {
+  'Ligne 1': true,
+  'Ligne 12': true,
+  'Ligne 6': true,
+  'Ligne 18': true,
+  'Ligne 19': true,
+  'Ligne 11': true,
 };
 
 // Full official ALSA bus routes with complete waypoints
@@ -38,6 +51,29 @@ const fullRouteWaypoints = {
     { lat: 31.6340, lng: -8.0480 }, // Massira / Inara Terminus (END)
     { lat: 31.6240, lng: -7.9860 }, // Return to Place Lamssallah
   ],
+  'Ligne 18': [
+    { lat: 31.5950, lng: -8.0350 }, // M'Hamid Terminus (START)
+    { lat: 31.6100, lng: -8.0250 }, // Av. Guemassa
+    { lat: 31.6308, lng: -8.0132 }, // Gare de Marrakech
+    { lat: 31.6342, lng: -7.9995 }, // Bab Doukkala
+    { lat: 31.6380, lng: -8.0050 }, // Guéliz
+    { lat: 31.5950, lng: -8.0350 }, // Return Loop
+  ],
+  'Ligne 19': [
+    { lat: 31.6070, lng: -8.0363 }, // Aéroport Menara (START)
+    { lat: 31.6210, lng: -8.0190 }, // Hivernage
+    { lat: 31.6258, lng: -7.9891 }, // Place Jemaa El Fna
+    { lat: 31.6342, lng: -7.9995 }, // Bab Doukkala
+    { lat: 31.6308, lng: -8.0132 }, // Gare de Marrakech
+    { lat: 31.6070, lng: -8.0363 }, // Return to Airport
+  ],
+  'Ligne 11': [
+    { lat: 31.6340, lng: -8.0480 }, // Massira (START)
+    { lat: 31.6220, lng: -8.0300 }, // Douar Iziki
+    { lat: 31.6342, lng: -7.9995 }, // Bab Doukkala
+    { lat: 31.6258, lng: -7.9891 }, // Arset El Bilk
+    { lat: 31.6340, lng: -8.0480 }, // Return Loop
+  ],
 };
 
 // Route metadata
@@ -60,6 +96,44 @@ const routeMetadata = {
     color: '#f44336',
     speed: 45,
   },
+  'Ligne 18': {
+    name: 'Ligne 18: M\'Hamid - Guéliz',
+    description: 'M\'Hamid → Gare → Bab Doukkala → Guéliz',
+    color: '#27ae60',
+    speed: 42,
+  },
+  'Ligne 19': {
+    name: 'Ligne 19: Aéroport - Gare',
+    description: 'Aéroport Menara → Hivernage → Jemaa El Fna → Gare',
+    color: '#f39c12',
+    speed: 55,
+  },
+  'Ligne 11': {
+    name: 'Ligne 11: Massira - Arset El Bilk',
+    description: 'Massira → Douar Iziki → Bab Doukkala → Arset El Bilk',
+    color: '#00bcd4',
+    speed: 38,
+  },
+};
+
+// Bus stops with serving lines
+const busStops = {
+  'Jemaa El Fna': { lat: 31.6258, lng: -7.9891, lines: ['Ligne 1', 'Ligne 19'] },
+  'Bab Doukkala': { lat: 31.6342, lng: -7.9995, lines: ['Ligne 1', 'Ligne 12', 'Ligne 6', 'Ligne 18', 'Ligne 19', 'Ligne 11'] },
+  'Guéliz': { lat: 31.6380, lng: -8.0050, lines: ['Ligne 1', 'Ligne 18'] },
+  'Gare de Marrakech': { lat: 31.6308, lng: -8.0132, lines: ['Ligne 12', 'Ligne 18', 'Ligne 19'] },
+  'Marjane': { lat: 31.6710, lng: -8.0150, lines: ['Ligne 12'] },
+  'Sidi Mimoun': { lat: 31.6210, lng: -7.9920, lines: ['Ligne 12'] },
+  'Place Lamssallah': { lat: 31.6240, lng: -7.9860, lines: ['Ligne 6'] },
+  'Bab Ahmar/Kasbah': { lat: 31.6120, lng: -7.9950, lines: ['Ligne 6'] },
+  'Targa/Massira Entrance': { lat: 31.6280, lng: -8.0300, lines: ['Ligne 6', 'Ligne 18'] },
+  'M\'Hamid Terminus': { lat: 31.5950, lng: -8.0350, lines: ['Ligne 18'] },
+  'Av. Guemassa': { lat: 31.6100, lng: -8.0250, lines: ['Ligne 18'] },
+  'Aéroport Menara': { lat: 31.6070, lng: -8.0363, lines: ['Ligne 19'] },
+  'Hivernage': { lat: 31.6210, lng: -8.0190, lines: ['Ligne 19'] },
+  'Massira/Inara Terminus': { lat: 31.6340, lng: -8.0480, lines: ['Ligne 6', 'Ligne 11'] },
+  'Douar Iziki': { lat: 31.6220, lng: -8.0300, lines: ['Ligne 11'] },
+  'Arset El Bilk': { lat: 31.6258, lng: -7.9891, lines: ['Ligne 1', 'Ligne 11'] },
 };
 
 const appState = {
@@ -73,6 +147,7 @@ const appState = {
   subscribedBuses: new Set(),
   lastUpdateTime: {},
   routePolylines: new Map(),
+  stopMarkers: new Map(),
 };
 
 const elements = {
@@ -177,6 +252,33 @@ function createUserBusIcon() {
   });
 }
 
+function createStopIcon(stopName, lines) {
+  return L.divIcon({
+    html: `
+      <div style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        background: white;
+        border-radius: 50%;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        border: 2px solid #333;
+      ">
+        <i class="fas fa-stop-circle" style="
+          color: #333;
+          font-size: 14px;
+        "></i>
+      </div>
+    `,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -20],
+    className: 'stop-icon',
+  });
+}
+
 // ============================================
 // Fetch Route from OSRM
 // ============================================
@@ -239,14 +341,75 @@ async function drawRoutePolylines() {
 }
 
 // ============================================
+// Draw Bus Stops
+// ============================================
+
+function drawBusStops() {
+  Object.entries(busStops).forEach(([stopName, stop]) => {
+    const marker = L.marker([stop.lat, stop.lng], { icon: createStopIcon(stopName, stop.lines) })
+      .addTo(appState.map)
+      .bindPopup(createStopPopup(stopName, stop.lines));
+
+    appState.stopMarkers.set(stopName, marker);
+  });
+}
+
+function createStopPopup(stopName, lines) {
+  const linesList = lines.map((line) => `<span style="background: ${busColors[line]}; color: white; padding: 2px 6px; border-radius: 3px; margin-right: 4px; font-size: 11px; font-weight: bold;">${line}</span>`).join('');
+
+  return `
+    <div style="min-width: 200px;">
+      <strong>${stopName}</strong>
+      <div style="margin-top: 8px; font-size: 11px;">
+        <p><strong>Lines:</strong></p>
+        <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+          ${linesList}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================
+// Toggle Line Visibility
+// ============================================
+
+function toggleLineVisibility(busId) {
+  lineVisibility[busId] = !lineVisibility[busId];
+  updateLineVisibility();
+  updateLegendCheckboxes();
+}
+
+function updateLineVisibility() {
+  Object.entries(appState.routePolylines).forEach(([busId, polyline]) => {
+    if (lineVisibility[busId]) {
+      polyline.setStyle({ opacity: 0.3 });
+    } else {
+      polyline.setStyle({ opacity: 0 });
+    }
+  });
+}
+
+function updateLegendCheckboxes() {
+  Object.keys(busColors).forEach((busId) => {
+    const checkbox = document.getElementById(`line-toggle-${busId}`);
+    if (checkbox) {
+      checkbox.checked = lineVisibility[busId];
+    }
+  });
+}
+
+// ============================================
 // Initialization
 // ============================================
 
 document.addEventListener('DOMContentLoaded', () => {
   initializeMap();
   drawRoutePolylines();
+  drawBusStops();
   initializeSocket();
   setupEventListeners();
+  setupLegendControls();
   updateConnectionStatus(false);
 });
 
@@ -336,6 +499,46 @@ function setupEventListeners() {
   });
   elements.busIdInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') confirmShare();
+  });
+}
+
+// ============================================
+// Legend Controls
+// ============================================
+
+function setupLegendControls() {
+  const legend = document.getElementById('busLegend');
+  if (!legend) return;
+
+  let legendHTML = '<div style="font-weight: 600; margin-bottom: 12px;">🚌 Active Lines</div>';
+
+  Object.entries(busColors).forEach(([busId, color]) => {
+    legendHTML += `
+      <div class="legend-item" style="display: flex; align-items: center; margin-bottom: 8px;">
+        <input 
+          type="checkbox" 
+          id="line-toggle-${busId}" 
+          checked 
+          style="margin-right: 8px; cursor: pointer; width: 16px; height: 16px;"
+        />
+        <div class="legend-dot" style="background: ${color}; width: 16px; height: 16px; border-radius: 50%; margin-right: 8px;"></div>
+        <label for="line-toggle-${busId}" style="cursor: pointer; font-size: 12px; flex: 1;">
+          ${busId}
+        </label>
+      </div>
+    `;
+  });
+
+  legend.innerHTML += legendHTML;
+
+  // Add event listeners for checkboxes
+  Object.keys(busColors).forEach((busId) => {
+    const checkbox = document.getElementById(`line-toggle-${busId}`);
+    if (checkbox) {
+      checkbox.addEventListener('change', () => {
+        toggleLineVisibility(busId);
+      });
+    }
   });
 }
 
@@ -578,10 +781,10 @@ function stopSharingLocation() {
 // ============================================
 
 function subscribeToAllBuses() {
-  ['Ligne 1', 'Ligne 12', 'Ligne 6'].forEach((busId) => {
+  ['Ligne 1', 'Ligne 12', 'Ligne 6', 'Ligne 18', 'Ligne 19', 'Ligne 11'].forEach((busId) => {
     appState.socket.emit('subscribe-bus', busId);
   });
-  showNotification('Watching all 3 bus lines', 'success');
+  showNotification('Watching all 6 bus lines', 'success');
 }
 
 function unsubscribeFromAllBuses() {
