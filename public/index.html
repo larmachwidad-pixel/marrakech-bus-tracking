@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marrakech Bus Tracker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    #map { height: 100vh; width: 100vw; }
+    .control-panel {
+      position: absolute; top: 10px; left: 10px; z-index: 1000;
+      background: white; padding: 15px; border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3); max-width: 280px;
+    }
+    button {
+      background: #e63946; color: white; border: none;
+      padding: 10px; width: 100%; border-radius: 4px;
+      cursor: pointer; font-weight: bold; margin-top: 8px;
+    }
+    button:hover { background: #d62828; }
+    .legend { margin-top: 10px; font-size: 13px; }
+    .legend-item { display: flex; align-items: center; margin-bottom: 4px; }
+    .color-box { width: 12px; height: 12px; margin-right: 8px; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+  <div class="control-panel">
+    <h2>🚌 Marrakech Bus Tracker</h2>
+    <div class="legend">
+      <strong>Active Lines:</strong>
+      <div class="legend-item"><span class="color-box" style="background: #667eea;"></span> Ligne 1</div>
+      <div class="legend-item"><span class="color-box" style="background: #764ba2;"></span> Ligne 12</div>
+      <div class="legend-item"><span class="color-box" style="background: #f44336;"></span> Ligne 6</div>
+    </div>
+    <hr style="margin: 12px 0;">
+    <label for="busId">Share Location as Bus:</label>
+    <input type="text" id="busId" value="Custom Bus" style="width: 90%; padding: 5px; margin-top: 5px;">
+    <button id="shareLocationBtn">Share Live Location</button>
+    <p id="status" style="font-size: 12px; color: #555; margin-top: 8px;"></p>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    
+    // Center map on Marrakech
+    const map = L.map('map').setView([31.6295, -7.9811], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const busMarkers = {};
+
+    // Listen for live bus position updates from server
+    socket.on('bus-location', (bus) => {
+      updateBusMarker(bus);
+    });
+
+    function updateBusMarker(bus) {
+      const lat = bus.latitude || bus.lat;
+      const lng = bus.longitude || bus.lng;
+      const label = bus.route || bus.busId;
+
+      if (busMarkers[bus.busId]) {
+        busMarkers[bus.busId].setLatLng([lat, lng]);
+        busMarkers[bus.busId].getPopup().setContent(`<b>${bus.busId}</b><br>${label}<br>Speed: ${bus.speed || 0} km/h`);
+      } else {
+        const marker = L.marker([lat, lng]).addTo(map)
+          .bindPopup(`<b>${bus.busId}</b><br>${label}<br>Speed: ${bus.speed || 0} km/h`);
+        busMarkers[bus.busId] = marker;
+      }
+    }
+
+    // Share user's live position
+    document.getElementById('shareLocationBtn').addEventListener('click', () => {
+      const busId = document.getElementById('busId').value || 'User Bus';
+      const status = document.getElementById('status');
+
+      if ('geolocation' in navigator) {
+        navigator.geolocation.watchPosition((pos) => {
+          const busData = {
+            busId: busId,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            speed: Math.round((pos.coords.speed || 0) * 3.6),
+            route: 'User Shared Route'
+          };
+          socket.emit('bus-location-update', busData);
+          status.innerText = `Broadcasting location for ${busId}...`;
+        }, (err) => {
+          status.innerText = 'Location access denied or unavailable.';
+        }, { enableHighAccuracy: true });
+      } else {
+        status.innerText = 'Geolocation not supported.';
+      }
+    });
+  </script>
+</body>
+</html>

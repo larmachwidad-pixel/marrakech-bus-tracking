@@ -1,0 +1,23 @@
+{
+  "name": "marrakech-bus-tracking",
+  "version": "1.0.0",
+  "description": "Real-time bus tracking web application for Marrakech commuters",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": ["bus-tracking", "real-time", "marrakech"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3",
+    "sqlite3": "^6.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
