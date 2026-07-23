@@ -43,7 +43,7 @@
 
   <div class="control-panel">
     <h2>🚌 Marrakech Bus Tracker</h2>
-    <div style="font-size: 13px; margin-bottom: 8px;"><strong>Bus Lines & Road Paths:</strong></div>
+    <div style="font-size: 13px; margin-bottom: 8px;"><strong>Full Bus Lines & Paths:</strong></div>
     
     <div class="legend-item" onclick="toggleLine('Ligne 1')">
       <span class="color-box" style="background: #667eea;"></span> Ligne 1
@@ -88,28 +88,38 @@
       'Ligne 6': '#f44336'
     };
 
-    // Major Waypoints for Road Routing
-    const routeWaypoints = {
+    // Complete Detailed Waypoints for Full Routes [lng, lat]
+    const fullRouteWaypoints = {
       'Ligne 1': [
-        [-7.9850, 31.6250], [-7.9830, 31.6280], [-7.9810, 31.6310],
-        [-7.9790, 31.6330], [-7.9770, 31.6350], [-7.9750, 31.6330],
-        [-7.9800, 31.6310], [-7.9820, 31.6280], [-7.9850, 31.6250]
+        [-7.9891, 31.6258], // Jemaa el-Fnaa
+        [-7.9995, 31.6342], // Bab Doukkala
+        [-8.0080, 31.6350], // Av. Yacoub El Mansour
+        [-8.0132, 31.6308], // Gare de Marrakech
+        [-8.0050, 31.6220], // Guéliz Center
+        [-7.9891, 31.6258]  // Return to Medina
       ],
       'Ligne 12': [
-        [-8.0363, 31.6070], [-8.0250, 31.6150], [-8.0100, 31.6200],
-        [-7.9950, 31.6250], [-7.9811, 31.6295], [-7.9950, 31.6200],
-        [-8.0100, 31.6150], [-8.0200, 31.6100], [-8.0363, 31.6070]
+        [-8.0363, 31.6070], // Aéroport Menara
+        [-8.0280, 31.6130], // Av. Guemassa
+        [-8.0190, 31.6210], // Hivernage
+        [-8.0132, 31.6308], // Gare de Marrakech
+        [-7.9995, 31.6342], // Bab Doukkala
+        [-7.9891, 31.6258], // Jemaa el-Fnaa
+        [-8.0363, 31.6070]  // Back to Airport
       ],
       'Ligne 6': [
-        [-7.9700, 31.5950], [-7.9750, 31.6000], [-7.9800, 31.6100],
-        [-7.9850, 31.6200], [-7.9900, 31.6300], [-7.9950, 31.6400],
-        [-7.9850, 31.6300], [-7.9750, 31.6200], [-7.9700, 31.5950]
+        [-7.9891, 31.6258], // Jemaa el-Fnaa / Medina
+        [-7.9850, 31.6120], // Kasbah
+        [-7.9950, 31.6300], // Bab Ahmar / Bab Aghmat
+        [-7.9995, 31.6342], // Bab Doukkala
+        [-8.0020, 31.6480], // Route de Safi / Semlalia
+        [-7.9891, 31.6258]  // Return
       ]
     };
 
-    // Fetch real street geometry via OSRM public API
-    async function fetchStreetSnappedRoute(lineId) {
-      const waypointsStr = routeWaypoints[lineId].map(pt => `${pt[0]},${pt[1]}`).join(';');
+    // Fetch full street geometry via OSRM public API
+    async function fetchFullRoute(lineId) {
+      const waypointsStr = fullRouteWaypoints[lineId].map(pt => `${pt[0]},${pt[1]}`).join(';');
       const url = `https://router.project-osrm.org/route/v1/driving/${waypointsStr}?overview=full&geometries=geojson`;
 
       try {
@@ -117,28 +127,25 @@
         const data = await response.json();
 
         if (data.routes && data.routes.length > 0) {
-          // Flip coordinates to [lat, lng] for Leaflet
           const coordinates = data.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
 
           const polyline = L.polyline(coordinates, {
             color: busColors[lineId],
             weight: 5,
-            opacity: 0.8
+            opacity: 0.85
           }).addTo(map);
 
           routePolylines[lineId] = polyline;
         }
       } catch (err) {
-        console.error('OSRM Route fetch error:', err);
+        console.error('Route fetch error:', err);
       }
     }
 
-    // Load snapped road paths for all lines
-    Object.keys(routeWaypoints).forEach(lineId => {
-      fetchStreetSnappedRoute(lineId);
+    Object.keys(fullRouteWaypoints).forEach(lineId => {
+      fetchFullRoute(lineId);
     });
 
-    // Toggle Bus Line Visibility
     function toggleLine(lineId) {
       lineVisibility[lineId] = !lineVisibility[lineId];
       const btn = document.getElementById(`btn-${lineId}`);
@@ -158,10 +165,10 @@
 
     // Bus Stops
     const busStops = [
-      { name: "Jemaa el-Fnaa", lat: 31.6258, lng: -7.9891, lines: ["Ligne 1", "Ligne 6"] },
+      { name: "Jemaa el-Fnaa", lat: 31.6258, lng: -7.9891, lines: ["Ligne 1", "Ligne 12", "Ligne 6"] },
       { name: "Gare de Marrakech", lat: 31.6308, lng: -8.0132, lines: ["Ligne 1", "Ligne 12"] },
       { name: "Aéroport Menara", lat: 31.6070, lng: -8.0363, lines: ["Ligne 12"] },
-      { name: "Bab Doukkala", lat: 31.6342, lng: -7.9995, lines: ["Ligne 1", "Ligne 6"] }
+      { name: "Bab Doukkala", lat: 31.6342, lng: -7.9995, lines: ["Ligne 1", "Ligne 12", "Ligne 6"] }
     ];
 
     function getDistanceInKm(lat1, lon1, lat2, lon2) {
