@@ -43,7 +43,7 @@
 
   <div class="control-panel">
     <h2>🚌 Marrakech Bus Tracker</h2>
-    <div style="font-size: 13px; margin-bottom: 8px;"><strong>Bus Lines & Path Filters:</strong></div>
+    <div style="font-size: 13px; margin-bottom: 8px;"><strong>Bus Lines & Road Paths:</strong></div>
     
     <div class="legend-item" onclick="toggleLine('Ligne 1')">
       <span class="color-box" style="background: #667eea;"></span> Ligne 1
@@ -88,35 +88,54 @@
       'Ligne 6': '#f44336'
     };
 
-    // Pre-defined Route Paths for Polylines
-    const routePaths = {
+    // Major Waypoints for Road Routing
+    const routeWaypoints = {
       'Ligne 1': [
-        [31.6250, -7.9850], [31.6280, -7.9830], [31.6310, -7.9810],
-        [31.6330, -7.9790], [31.6350, -7.9770], [31.6330, -7.9750],
-        [31.6310, -7.9800], [31.6280, -7.9820], [31.6250, -7.9850]
+        [-7.9850, 31.6250], [-7.9830, 31.6280], [-7.9810, 31.6310],
+        [-7.9790, 31.6330], [-7.9770, 31.6350], [-7.9750, 31.6330],
+        [-7.9800, 31.6310], [-7.9820, 31.6280], [-7.9850, 31.6250]
       ],
       'Ligne 12': [
-        [31.6070, -8.0363], [31.6150, -8.0250], [31.6200, -8.0100],
-        [31.6250, -7.9950], [31.6295, -7.9811], [31.6200, -7.9950],
-        [31.6150, -8.0100], [31.6100, -8.0200], [31.6070, -8.0363]
+        [-8.0363, 31.6070], [-8.0250, 31.6150], [-8.0100, 31.6200],
+        [-7.9950, 31.6250], [-7.9811, 31.6295], [-7.9950, 31.6200],
+        [-8.0100, 31.6150], [-8.0200, 31.6100], [-8.0363, 31.6070]
       ],
       'Ligne 6': [
-        [31.5950, -7.9700], [31.6000, -7.9750], [31.6100, -7.9800],
-        [31.6200, -7.9850], [31.6300, -7.9900], [31.6400, -7.9950],
-        [31.6300, -7.9850], [31.6200, -7.9750], [31.5950, -7.9700]
+        [-7.9700, 31.5950], [-7.9750, 31.6000], [-7.9800, 31.6100],
+        [-7.9850, 31.6200], [-7.9900, 31.6300], [-7.9950, 31.6400],
+        [-7.9850, 31.6300], [-7.9750, 31.6200], [-7.9700, 31.5950]
       ]
     };
 
-    // Draw Route Polylines
-    Object.keys(routePaths).forEach(lineId => {
-      const polyline = L.polyline(routePaths[lineId], {
-        color: busColors[lineId],
-        weight: 4,
-        opacity: 0.7,
-        dashArray: '8, 8'
-      }).addTo(map);
+    // Fetch real street geometry via OSRM public API
+    async function fetchStreetSnappedRoute(lineId) {
+      const waypointsStr = routeWaypoints[lineId].map(pt => `${pt[0]},${pt[1]}`).join(';');
+      const url = `https://router.project-osrm.org/route/v1/driving/${waypointsStr}?overview=full&geometries=geojson`;
 
-      routePolylines[lineId] = polyline;
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.routes && data.routes.length > 0) {
+          // Flip coordinates to [lat, lng] for Leaflet
+          const coordinates = data.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
+
+          const polyline = L.polyline(coordinates, {
+            color: busColors[lineId],
+            weight: 5,
+            opacity: 0.8
+          }).addTo(map);
+
+          routePolylines[lineId] = polyline;
+        }
+      } catch (err) {
+        console.error('OSRM Route fetch error:', err);
+      }
+    }
+
+    // Load snapped road paths for all lines
+    Object.keys(routeWaypoints).forEach(lineId => {
+      fetchStreetSnappedRoute(lineId);
     });
 
     // Toggle Bus Line Visibility
