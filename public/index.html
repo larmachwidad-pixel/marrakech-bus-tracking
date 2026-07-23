@@ -6,39 +6,47 @@
   <title>Marrakech Bus Tracker</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     #map { height: 100vh; width: 100vw; }
     .control-panel {
-      position: absolute; top: 10px; left: 10px; z-index: 1000;
-      background: white; padding: 15px; border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3); max-width: 280px;
+      position: absolute; top: 15px; left: 15px; z-index: 1000;
+      background: rgba(255, 255, 255, 0.95); padding: 18px; border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-width: 290px;
+    }
+    h2 { margin-top: 0; font-size: 1.2rem; color: #2c3e50; }
+    .legend-item { display: flex; align-items: center; margin-bottom: 6px; font-size: 13px; font-weight: 500; }
+    .color-box { width: 14px; height: 14px; margin-right: 8px; border-radius: 3px; display: inline-block; }
+    .bus-marker-icon {
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%; color: white; font-size: 14px; font-weight: bold;
+      border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    }
+    .stop-marker-icon {
+      background: #2c3e50; color: white; border-radius: 4px;
+      padding: 3px 6px; font-size: 11px; font-weight: bold; border: 1px solid white;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
     button {
       background: #e63946; color: white; border: none;
-      padding: 10px; width: 100%; border-radius: 4px;
-      cursor: pointer; font-weight: bold; margin-top: 8px;
+      padding: 10px; width: 100%; border-radius: 6px;
+      cursor: pointer; font-weight: bold; margin-top: 10px; transition: background 0.2s;
     }
     button:hover { background: #d62828; }
-    .legend { margin-top: 10px; font-size: 13px; }
-    .legend-item { display: flex; align-items: center; margin-bottom: 4px; }
-    .color-box { width: 12px; height: 12px; margin-right: 8px; border-radius: 2px; }
   </style>
 </head>
 <body>
 
   <div class="control-panel">
     <h2>🚌 Marrakech Bus Tracker</h2>
-    <div class="legend">
-      <strong>Active Lines:</strong>
-      <div class="legend-item"><span class="color-box" style="background: #667eea;"></span> Ligne 1</div>
-      <div class="legend-item"><span class="color-box" style="background: #764ba2;"></span> Ligne 12</div>
-      <div class="legend-item"><span class="color-box" style="background: #f44336;"></span> Ligne 6</div>
-    </div>
-    <hr style="margin: 12px 0;">
-    <label for="busId">Share Location as Bus:</label>
-    <input type="text" id="busId" value="Custom Bus" style="width: 90%; padding: 5px; margin-top: 5px;">
-    <button id="shareLocationBtn">Share Live Location</button>
-    <p id="status" style="font-size: 12px; color: #555; margin-top: 8px;"></p>
+    <div style="font-size: 13px; margin-bottom: 8px;"><strong>Active Lines:</strong></div>
+    <div class="legend-item"><span class="color-box" style="background: #667eea;"></span> Ligne 1 (Medina - V. Nouvelle)</div>
+    <div class="legend-item"><span class="color-box" style="background: #764ba2;"></span> Ligne 12 (Airport - Center)</div>
+    <div class="legend-item"><span class="color-box" style="background: #f44336;"></span> Ligne 6 (Safi Rd - Kasbah)</div>
+    <hr style="margin: 12px 0; border: none; border-top: 1px solid #ddd;">
+    <label for="busId" style="font-size: 12px; font-weight: bold;">Broadcast Custom Location:</label>
+    <input type="text" id="busId" value="Custom Bus" style="width: 92%; padding: 6px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px;">
+    <button id="shareLocationBtn">Share Live GPS Location</button>
+    <p id="status" style="font-size: 11px; color: #666; margin-top: 8px; margin-bottom: 0;"></p>
   </div>
 
   <div id="map"></div>
@@ -48,35 +56,117 @@
   <script>
     const socket = io();
     
-    // Center map on Marrakech
+    // Map setup centered on Marrakech
     const map = L.map('map').setView([31.6295, -7.9811], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
     const busMarkers = {};
+    const busPositions = {};
+    const busColors = {
+      'Ligne 1': '#667eea',
+      'Ligne 12': '#764ba2',
+      'Ligne 6': '#f44336'
+    };
 
-    // Listen for live bus position updates from server
-    socket.on('bus-location', (bus) => {
-      updateBusMarker(bus);
+    // Major Bus Stops Data
+    const busStops = [
+      { name: "Jemaa el-Fnaa", lat: 31.6258, lng: -7.9891, lines: ["Ligne 1", "Ligne 6"] },
+      { name: "Gare de Marrakech", lat: 31.6308, lng: -8.0132, lines: ["Ligne 1", "Ligne 12"] },
+      { name: "Aéroport Menara", lat: 31.6070, lng: -8.0363, lines: ["Ligne 12"] },
+      { name: "Bab Doukkala", lat: 31.6342, lng: -7.9995, lines: ["Ligne 1", "Ligne 6"] }
+    ];
+
+    // Haversine formula to calculate distance in KM between two lat/lng coordinates
+    function getDistanceInKm(lat1, lon1, lat2, lon2) {
+      const R = 6371; // Radius of the earth in km
+      const dLat = (lat2 - lat1) * (Math.PI / 180);
+      const dLon = (lon2 - lon1) * (Math.PI / 180);
+      const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
+        Math.sin(dLon / 2) * Math.sin(dLon / 2); 
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
+      return R * c;
+    }
+
+    // Dynamic ETA Calculation
+    function calculateETAForStop(stop) {
+      let closestEtaText = [];
+
+      stop.lines.forEach(lineId => {
+        const busPos = busPositions[lineId];
+        if (busPos) {
+          const distKm = getDistanceInKm(stop.lat, stop.lng, busPos.lat, busPos.lng);
+          const avgSpeedKmH = busPos.speed || 35;
+          const timeHours = distKm / avgSpeedKmH;
+          const timeMinutes = Math.max(1, Math.round(timeHours * 60));
+          closestEtaText.push(`<b>${lineId}:</b> ~${timeMinutes} min (${distKm.toFixed(1)} km away)`);
+        } else {
+          closestEtaText.push(`<b>${lineId}:</b> Tracking active...`);
+        }
+      });
+
+      return closestEtaText.join('<br>');
+    }
+
+    // Add Bus Stops to Map with dynamic ETA popups
+    busStops.forEach(stop => {
+      const stopIcon = L.divIcon({
+        className: 'stop-marker-icon',
+        html: `🚏 Stop`,
+        iconSize: [50, 22],
+        iconAnchor: [25, 11]
+      });
+
+      const marker = L.marker([stop.lat, stop.lng], { icon: stopIcon }).addTo(map);
+
+      marker.on('click', () => {
+        const etaInfo = calculateETAForStop(stop);
+        const popupContent = `
+          <div style="font-size: 13px; min-width: 160px;">
+            <b>🚏 ${stop.name}</b><br>
+            <small style="color: #666;">Services: ${stop.lines.join(', ')}</small>
+            <hr style="margin: 6px 0;">
+            <div style="color: #27ae60;">${etaInfo}</div>
+          </div>
+        `;
+        marker.bindPopup(popupContent).openPopup();
+      });
     });
 
-    function updateBusMarker(bus) {
+    // Helper for Custom Colored Bus Icons
+    function createBusIcon(color) {
+      return L.divIcon({
+        className: 'custom-bus-pin',
+        html: `<div class="bus-marker-icon" style="background-color: ${color}; width: 32px; height: 32px;">🚌</div>`,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+    }
+
+    // Handle Bus Location Updates from Socket.io
+    socket.on('bus-location', (bus) => {
       const lat = bus.latitude || bus.lat;
       const lng = bus.longitude || bus.lng;
       const label = bus.route || bus.busId;
+      const color = busColors[bus.busId] || '#333';
+
+      // Track active position for real-time ETA calculation
+      busPositions[bus.busId] = { lat, lng, speed: bus.speed || 35 };
 
       if (busMarkers[bus.busId]) {
         busMarkers[bus.busId].setLatLng([lat, lng]);
         busMarkers[bus.busId].getPopup().setContent(`<b>${bus.busId}</b><br>${label}<br>Speed: ${bus.speed || 0} km/h`);
       } else {
-        const marker = L.marker([lat, lng]).addTo(map)
+        const marker = L.marker([lat, lng], { icon: createBusIcon(color) }).addTo(map)
           .bindPopup(`<b>${bus.busId}</b><br>${label}<br>Speed: ${bus.speed || 0} km/h`);
         busMarkers[bus.busId] = marker;
       }
-    }
+    });
 
-    // Share user's live position
+    // Share user location
     document.getElementById('shareLocationBtn').addEventListener('click', () => {
       const busId = document.getElementById('busId').value || 'User Bus';
       const status = document.getElementById('status');
