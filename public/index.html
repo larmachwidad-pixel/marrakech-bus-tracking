@@ -11,10 +11,10 @@
     .control-panel {
       position: absolute; top: 15px; left: 15px; z-index: 1000;
       background: rgba(255, 255, 255, 0.95); padding: 18px; border-radius: 10px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-width: 290px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-width: 300px;
     }
     h2 { margin-top: 0; font-size: 1.2rem; color: #2c3e50; }
-    .legend-item { display: flex; align-items: center; margin-bottom: 6px; font-size: 13px; font-weight: 500; }
+    .legend-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 13px; font-weight: 500; cursor: pointer; }
     .color-box { width: 14px; height: 14px; margin-right: 8px; border-radius: 3px; display: inline-block; }
     .bus-marker-icon {
       display: flex; align-items: center; justify-content: center;
@@ -26,26 +26,42 @@
       padding: 3px 6px; font-size: 11px; font-weight: bold; border: 1px solid white;
       box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
-    button {
+    .filter-btn {
+      background: #f0f2f5; color: #333; border: 1px solid #ccc;
+      padding: 4px 8px; border-radius: 4px; font-size: 11px; margin-left: auto; cursor: pointer;
+    }
+    .filter-btn.active { background: #27ae60; color: white; border-color: #27ae60; }
+    button.primary {
       background: #e63946; color: white; border: none;
       padding: 10px; width: 100%; border-radius: 6px;
       cursor: pointer; font-weight: bold; margin-top: 10px; transition: background 0.2s;
     }
-    button:hover { background: #d62828; }
+    button.primary:hover { background: #d62828; }
   </style>
 </head>
 <body>
 
   <div class="control-panel">
     <h2>🚌 Marrakech Bus Tracker</h2>
-    <div style="font-size: 13px; margin-bottom: 8px;"><strong>Active Lines:</strong></div>
-    <div class="legend-item"><span class="color-box" style="background: #667eea;"></span> Ligne 1 (Medina - V. Nouvelle)</div>
-    <div class="legend-item"><span class="color-box" style="background: #764ba2;"></span> Ligne 12 (Airport - Center)</div>
-    <div class="legend-item"><span class="color-box" style="background: #f44336;"></span> Ligne 6 (Safi Rd - Kasbah)</div>
+    <div style="font-size: 13px; margin-bottom: 8px;"><strong>Bus Lines & Path Filters:</strong></div>
+    
+    <div class="legend-item" onclick="toggleLine('Ligne 1')">
+      <span class="color-box" style="background: #667eea;"></span> Ligne 1
+      <button class="filter-btn active" id="btn-Ligne 1">Visible</button>
+    </div>
+    <div class="legend-item" onclick="toggleLine('Ligne 12')">
+      <span class="color-box" style="background: #764ba2;"></span> Ligne 12
+      <button class="filter-btn active" id="btn-Ligne 12">Visible</button>
+    </div>
+    <div class="legend-item" onclick="toggleLine('Ligne 6')">
+      <span class="color-box" style="background: #f44336;"></span> Ligne 6
+      <button class="filter-btn active" id="btn-Ligne 6">Visible</button>
+    </div>
+
     <hr style="margin: 12px 0; border: none; border-top: 1px solid #ddd;">
     <label for="busId" style="font-size: 12px; font-weight: bold;">Broadcast Custom Location:</label>
     <input type="text" id="busId" value="Custom Bus" style="width: 92%; padding: 6px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px;">
-    <button id="shareLocationBtn">Share Live GPS Location</button>
+    <button class="primary" id="shareLocationBtn">Share Live GPS Location</button>
     <p id="status" style="font-size: 11px; color: #666; margin-top: 8px; margin-bottom: 0;"></p>
   </div>
 
@@ -56,7 +72,6 @@
   <script>
     const socket = io();
     
-    // Map setup centered on Marrakech
     const map = L.map('map').setView([31.6295, -7.9811], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors'
@@ -64,13 +79,65 @@
 
     const busMarkers = {};
     const busPositions = {};
+    const routePolylines = {};
+    const lineVisibility = { 'Ligne 1': true, 'Ligne 12': true, 'Ligne 6': true };
+
     const busColors = {
       'Ligne 1': '#667eea',
       'Ligne 12': '#764ba2',
       'Ligne 6': '#f44336'
     };
 
-    // Major Bus Stops Data
+    // Pre-defined Route Paths for Polylines
+    const routePaths = {
+      'Ligne 1': [
+        [31.6250, -7.9850], [31.6280, -7.9830], [31.6310, -7.9810],
+        [31.6330, -7.9790], [31.6350, -7.9770], [31.6330, -7.9750],
+        [31.6310, -7.9800], [31.6280, -7.9820], [31.6250, -7.9850]
+      ],
+      'Ligne 12': [
+        [31.6070, -8.0363], [31.6150, -8.0250], [31.6200, -8.0100],
+        [31.6250, -7.9950], [31.6295, -7.9811], [31.6200, -7.9950],
+        [31.6150, -8.0100], [31.6100, -8.0200], [31.6070, -8.0363]
+      ],
+      'Ligne 6': [
+        [31.5950, -7.9700], [31.6000, -7.9750], [31.6100, -7.9800],
+        [31.6200, -7.9850], [31.6300, -7.9900], [31.6400, -7.9950],
+        [31.6300, -7.9850], [31.6200, -7.9750], [31.5950, -7.9700]
+      ]
+    };
+
+    // Draw Route Polylines
+    Object.keys(routePaths).forEach(lineId => {
+      const polyline = L.polyline(routePaths[lineId], {
+        color: busColors[lineId],
+        weight: 4,
+        opacity: 0.7,
+        dashArray: '8, 8'
+      }).addTo(map);
+
+      routePolylines[lineId] = polyline;
+    });
+
+    // Toggle Bus Line Visibility
+    function toggleLine(lineId) {
+      lineVisibility[lineId] = !lineVisibility[lineId];
+      const btn = document.getElementById(`btn-${lineId}`);
+      
+      if (lineVisibility[lineId]) {
+        btn.innerText = 'Visible';
+        btn.classList.add('active');
+        if (busMarkers[lineId]) map.addLayer(busMarkers[lineId]);
+        if (routePolylines[lineId]) map.addLayer(routePolylines[lineId]);
+      } else {
+        btn.innerText = 'Hidden';
+        btn.classList.remove('active');
+        if (busMarkers[lineId]) map.removeLayer(busMarkers[lineId]);
+        if (routePolylines[lineId]) map.removeLayer(routePolylines[lineId]);
+      }
+    }
+
+    // Bus Stops
     const busStops = [
       { name: "Jemaa el-Fnaa", lat: 31.6258, lng: -7.9891, lines: ["Ligne 1", "Ligne 6"] },
       { name: "Gare de Marrakech", lat: 31.6308, lng: -8.0132, lines: ["Ligne 1", "Ligne 12"] },
@@ -78,9 +145,8 @@
       { name: "Bab Doukkala", lat: 31.6342, lng: -7.9995, lines: ["Ligne 1", "Ligne 6"] }
     ];
 
-    // Haversine formula to calculate distance in KM between two lat/lng coordinates
     function getDistanceInKm(lat1, lon1, lat2, lon2) {
-      const R = 6371; // Radius of the earth in km
+      const R = 6371;
       const dLat = (lat2 - lat1) * (Math.PI / 180);
       const dLon = (lon2 - lon1) * (Math.PI / 180);
       const a = 
@@ -91,7 +157,6 @@
       return R * c;
     }
 
-    // Dynamic ETA Calculation
     function calculateETAForStop(stop) {
       let closestEtaText = [];
 
@@ -102,7 +167,7 @@
           const avgSpeedKmH = busPos.speed || 35;
           const timeHours = distKm / avgSpeedKmH;
           const timeMinutes = Math.max(1, Math.round(timeHours * 60));
-          closestEtaText.push(`<b>${lineId}:</b> ~${timeMinutes} min (${distKm.toFixed(1)} km away)`);
+          closestEtaText.push(`<b>${lineId}:</b> ~${timeMinutes} min (${distKm.toFixed(1)} km)`);
         } else {
           closestEtaText.push(`<b>${lineId}:</b> Tracking active...`);
         }
@@ -111,7 +176,6 @@
       return closestEtaText.join('<br>');
     }
 
-    // Add Bus Stops to Map with dynamic ETA popups
     busStops.forEach(stop => {
       const stopIcon = L.divIcon({
         className: 'stop-marker-icon',
@@ -136,7 +200,6 @@
       });
     });
 
-    // Helper for Custom Colored Bus Icons
     function createBusIcon(color) {
       return L.divIcon({
         className: 'custom-bus-pin',
@@ -146,27 +209,28 @@
       });
     }
 
-    // Handle Bus Location Updates from Socket.io
     socket.on('bus-location', (bus) => {
       const lat = bus.latitude || bus.lat;
       const lng = bus.longitude || bus.lng;
       const label = bus.route || bus.busId;
       const color = busColors[bus.busId] || '#333';
 
-      // Track active position for real-time ETA calculation
       busPositions[bus.busId] = { lat, lng, speed: bus.speed || 35 };
 
       if (busMarkers[bus.busId]) {
         busMarkers[bus.busId].setLatLng([lat, lng]);
         busMarkers[bus.busId].getPopup().setContent(`<b>${bus.busId}</b><br>${label}<br>Speed: ${bus.speed || 0} km/h`);
       } else {
-        const marker = L.marker([lat, lng], { icon: createBusIcon(color) }).addTo(map)
-          .bindPopup(`<b>${bus.busId}</b><br>${label}<br>Speed: ${bus.speed || 0} km/h`);
+        const marker = L.marker([lat, lng], { icon: createBusIcon(color) });
+        marker.bindPopup(`<b>${bus.busId}</b><br>${label}<br>Speed: ${bus.speed || 0} km/h`);
         busMarkers[bus.busId] = marker;
+
+        if (lineVisibility[bus.busId] !== false) {
+          marker.addTo(map);
+        }
       }
     });
 
-    // Share user location
     document.getElementById('shareLocationBtn').addEventListener('click', () => {
       const busId = document.getElementById('busId').value || 'User Bus';
       const status = document.getElementById('status');
